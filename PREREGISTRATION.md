@@ -70,7 +70,9 @@ Target n: ≥ 120 student × concept units (e.g. 3 students × 40 concepts). Sta
 
 | Date | Change | Reason |
 |---|---|---|
-| — | none yet | |
+| 2026-07-31 | `gap.db` schema v2: added `concepts.baseline_difficulty` (persisted per-concept, pre-exposure). `assign_arms` now stratifies on it, falling back to the FSRS `D0(3)` proxy only when NULL. | Infrastructure, not endpoints. The v1 proxy was a single constant, so the difficulty tercile did not discriminate; a real per-concept column makes the pre-registered stratification actual. No cutoff, prediction, or endpoint changed. |
+| 2026-07-31 | `gap.db` schema v2: added `retirements(concept_id, retired_ms, trigger)`. `throughput_cost` now counts these app-recorded rows instead of reconstructing retirement from card/novel state. | Infrastructure, not endpoints. Persisting the app's own retirement signal replaces an analysis-time reconstruction with ground truth; the throughput prediction (−25% to −35%) is unchanged. `vanilla` rows are written by the sidecar observing unmodified Anki. |
+| 2026-07-31 | Verified FSRS read location: `cards.data.$.s`/`$.d` are the exact keys Anki's backend serializes (`rslib/src/storage/card/data.rs`). No query changed. | Confirmation only — closes the "storage may have drifted" caveat. Reads stay isolated in each `card_state` CTE. |
 
 ---
 

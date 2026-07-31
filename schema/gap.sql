@@ -11,13 +11,21 @@
 -- One collection == one student. No user_id; the analysis joins across exported files.
 
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, val TEXT NOT NULL) STRICT;
-INSERT OR IGNORE INTO meta(key, val) VALUES ('schema', '1');
+-- schema 2: added concepts.baseline_difficulty and the retirements table.
+-- No live v1 collection exists (pre-registration, pre-data), so the change is
+-- carried in the CREATE statements below rather than by ALTER migrations.
+INSERT OR IGNORE INTO meta(key, val) VALUES ('schema', '2');
 
 CREATE TABLE IF NOT EXISTS concepts (
   id     INTEGER PRIMARY KEY,
   code   TEXT NOT NULL UNIQUE,          -- official outline code, e.g. '1A.2'
   name   TEXT NOT NULL,
-  weight REAL NOT NULL DEFAULT 1.0      -- exam weight, drives queue ordering
+  weight REAL NOT NULL DEFAULT 1.0,     -- exam weight, drives queue ordering
+  -- Pre-exposure FSRS initial-difficulty estimate, set when the concept is
+  -- authored (before first exposure), so arm assignment can stratify on a real
+  -- per-concept difficulty. NULL until populated; assign_arms falls back to the
+  -- FSRS D0(3) proxy when it is NULL. Never rewritten after first exposure.
+  baseline_difficulty REAL
 ) STRICT;
 
 -- Concept membership is authored as a note tag: `concept::1A.2`.
@@ -58,6 +66,24 @@ CREATE TABLE IF NOT EXISTS arms (
   concept_id  INTEGER PRIMARY KEY REFERENCES concepts(id),
   arm         TEXT NOT NULL CHECK (arm IN ('gate','nogate','vanilla')),
   assigned_ms INTEGER NOT NULL          -- must predate the concept's first exposure
+) STRICT;
+
+-- Persisted retirement — the ground-truth signal the app writes when a concept's
+-- arm-specific retirement rule fires. Presence of a row == retired; there is no
+-- boolean, the timestamp carries when. Written once per concept, append-only
+-- (retirement does not un-happen). throughput_cost reads this instead of
+-- reconstructing retirement from card/novel state.
+--   * gate    concept -> trigger 'novel_gate'  (practice novel accuracy >= 0.7)
+--   * nogate  concept -> trigger 'card_mastery' (mastery-only rule fired)
+--   * vanilla concept -> trigger 'anki_default' — unmodified Anki knows nothing
+--     of gap.db, so the sidecar OBSERVES Anki's own graduation/maturity and
+--     records the row. It never writes to main.* to do so. (Default choice;
+--     swap to a derived-vanilla approach if a single writer is preferred.)
+CREATE TABLE IF NOT EXISTS retirements (
+  concept_id INTEGER PRIMARY KEY REFERENCES concepts(id),
+  retired_ms INTEGER NOT NULL,          -- when the rule fired; must postdate arms.assigned_ms
+  trigger    TEXT NOT NULL CHECK (trigger IN ('novel_gate','card_mastery','anki_default')),
+  usn        INTEGER NOT NULL DEFAULT -1
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS ix_novel_revlog_item ON novel_revlog(item_id, id);

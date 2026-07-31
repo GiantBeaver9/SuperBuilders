@@ -21,7 +21,7 @@ validator.
 | **Analysis** | `04_endpoints/primary_crossover.sql` | `main.revlog`, `gap.*` | — |
 | | `04_endpoints/latency_dissociation.sql` | `main.revlog`, `gap.novel_revlog` | — |
 | | `04_endpoints/terminal_novel_accuracy.sql` | `gap.*` (held-out) | — |
-| | `04_endpoints/throughput_cost.sql` | `main.*`, `gap.*` | — |
+| | `04_endpoints/throughput_cost.sql` | `main.revlog`, `gap.arms/retirements` | — |
 | | `04_endpoints/arm_c_sanity.sql` | `gap.*` (held-out) | — |
 | **Dashboard** | `05_discipline/abstain_rule.sql` | `gap.*` | — |
 
@@ -64,20 +64,22 @@ transaction — empty tables still surface bad columns, table refs, and syntax.
 writers, then exercises every analysis query on populated rows and prints the
 crossover contrast.
 
-## Open items surfaced during the build
+## Design decisions resolved (schema v2)
 
-These are design tensions the SQL exposes; each is isolated to one place so it
-is cheap to change once decided. See `CONVENTIONS.md` for the authoritative
-definitions.
+The three tensions the first build surfaced are now settled in the schema. See
+`CONVENTIONS.md` for the authoritative definitions.
 
-- **`gap.db` persists no `retired`/mastery state.** `throughput_cost.sql`
-  therefore *derives* retirement per arm (gate: practice novel accuracy ≥ 0.7;
-  nogate/vanilla: every reviewed card at FSRS R ≥ 0.9). The `0.9` bar is the
-  single documented assumption.
-- **Baseline difficulty is degenerate today.** `assign_arms.sql` stratifies by
-  the FSRS `D0(3)` proxy, but `gap.db` carries no per-concept difficulty signal,
-  so that proxy is constant across concepts and its tercile does not
-  discriminate. Real stratification needs a per-concept baseline column.
-- **FSRS memory state is read from `cards.data.$.s`/`$.d`.** Anki's storage has
-  drifted across versions; every mastery query isolates this in a `card_state`
-  CTE so the read is one edit per file if the target schema differs.
+- **Retirement is persisted, not derived.** `gap.retirements` (concept_id,
+  `retired_ms`, `trigger`) is the app's ground-truth signal — a concept is
+  retired iff it has a row. `throughput_cost.sql` counts those rows instead of
+  reconstructing retirement from card/novel state. `vanilla` retirements are
+  recorded by the sidecar *observing* unmodified Anki (`trigger='anki_default'`);
+  it never writes `main.*`.
+- **Baseline difficulty is a real per-concept column.** `gap.concepts.baseline_difficulty`
+  is authored before first exposure, so `assign_arms.sql` stratifies on a genuine
+  per-concept value; it falls back to the FSRS `D0(3)` proxy only where the
+  column is NULL.
+- **FSRS read location is verified.** `cards.data.$.s`/`$.d` are the exact serde
+  keys Anki's Rust backend writes (`CardData` in `rslib/src/storage/card/data.rs`).
+  Every mastery query still isolates the read in a `card_state` CTE so a
+  non-standard backend is a one-line change per file.

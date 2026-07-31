@@ -44,10 +44,13 @@ with tempfile.TemporaryDirectory() as td:
     con.executescript((ROOT / "schema" / "main_stub.sql").read_text())
     con.execute("ATTACH DATABASE ? AS gap", (str(gap_path),))
 
-    # --- seed gap.concepts: 4 concepts ---
+    # --- seed gap.concepts: 4 concepts, each with a real per-concept
+    # baseline_difficulty (schema v2) so assign_arms exercises the populated
+    # path rather than the D0(3) NULL fallback ---
     for cid, code in [(1, "C1"), (2, "C2"), (3, "C3"), (4, "C4")]:
-        con.execute("INSERT INTO gap.concepts(id,code,name,weight) VALUES(?,?,?,?)",
-                    (cid, code, f"Concept {code}", 1.0 + cid * 0.5))
+        con.execute("INSERT INTO gap.concepts(id,code,name,weight,baseline_difficulty)"
+                    " VALUES(?,?,?,?,?)",
+                    (cid, code, f"Concept {code}", 1.0 + cid * 0.5, 3.0 + cid))
 
     # --- seed main.notes + main.cards: one note/card per concept, tagged ---
     for cid, code in [(1, "C1"), (2, "C2"), (3, "C3"), (4, "C4")]:
@@ -114,10 +117,20 @@ with tempfile.TemporaryDirectory() as td:
     for cid in (1, 2, 3, 4):
         con.execute("INSERT INTO gap.arms(concept_id,arm,assigned_ms) VALUES(?,?,?)",
                     (cid, "gate" if cid in gate_concepts else "nogate", 1))
+    # persisted retirements (schema v2): gate retires 1 of its 2 concepts,
+    # nogate retires both of its 2 — so throughput_cost shows Arm A (gate)
+    # retiring fewer, the predicted direction. retired_ms (2) postdates
+    # assigned_ms (1).
+    for cid, trig in [(1, "novel_gate"), (3, "card_mastery"), (4, "card_mastery")]:
+        con.execute("INSERT INTO gap.retirements(concept_id,retired_ms,trigger)"
+                    " VALUES(?,?,?)", (cid, 2, trig))
     con.commit()
 
     print("== primary_crossover (contrast statement) ==")
     run_file(con, "queries/04_endpoints/primary_crossover.sql", show=True)
+
+    print("== throughput_cost (persisted retirements) ==")
+    run_file(con, "queries/04_endpoints/throughput_cost.sql", show=True)
 
     print("== every analysis query runs on populated data ==")
     for f in ["queries/03_queue/points_at_stake.sql",

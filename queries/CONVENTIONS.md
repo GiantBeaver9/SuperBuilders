@@ -84,11 +84,13 @@ json_extract(c.data, '$.d')   -- difficulty D
 Elapsed days `t` = `(now_ms - last_review_ms) / 86400000.0`, where
 `last_review_ms = MAX(main.revlog.id)` over the card's reviews.
 
-> **ASSUMPTION — single point to adjust.** FSRS memory state is read from
-> `cards.data.$.s`/`$.d`. Anki's storage of FSRS state has drifted across
-> versions; if the target collection stores it elsewhere, change the two
-> `json_extract` calls (and only those). Every file that computes mastery
-> isolates this in one CTE named `card_state` so the edit is one place per file.
+> **VERIFIED read location.** FSRS memory state is read from `cards.data.$.s`
+> (stability) and `$.d` (difficulty). These are the exact serde keys Anki's
+> Rust backend writes into `cards.data` (`CardData` in
+> `rslib/src/storage/card/data.rs`: `s`, `d`, plus `dr`, `decay`, `pos`, `cd`),
+> confirmed against the current source. Older/other backends could differ; every
+> file that computes mastery still isolates the read in one CTE named
+> `card_state`, so any future divergence is one edit per file.
 
 **`card_mastery(concept)`** = mean `R` across the concept's cards that have a
 memory state (cards with no reviews yet contribute no `R`).
@@ -119,20 +121,43 @@ Keep the two strictly separate. A query that gates or orders must filter
 concept, `assigned_ms` predating the concept's first exposure. Contrasts are
 reported as **A − B** (`gate` − `nogate`); `vanilla` is the sanity check.
 
+## Retirement (persisted)
+
+Retirement is the app's ground-truth signal, persisted in **`gap.retirements`**
+(schema v2). A concept is retired **iff** it has a row there — presence, not a
+boolean; `retired_ms` records when the arm's rule fired, `trigger` records which
+rule:
+
+| Arm | `trigger` | Fires when |
+|---|---|---|
+| `gate` | `novel_gate` | practice novel accuracy ≥ 0.7 |
+| `nogate` | `card_mastery` | the mastery-only rule fires (novel gate off) |
+| `vanilla` | `anki_default` | the sidecar observes unmodified Anki's own graduation/maturity |
+
+`retired_ms` must postdate `arms.assigned_ms`. The row is written once and never
+rewritten (retirement does not un-happen). `throughput_cost.sql` **counts these
+rows** — it does not reconstruct retirement from card/novel state. The `vanilla`
+row is written by the sidecar *observing* Anki (it never writes `main.*`); this
+is the default recording choice and is documented at the table in `gap.sql`.
+
 ## Baseline difficulty for stratification
 
 The pre-registration stratifies arm assignment by exam weight and by *baseline*
 FSRS initial difficulty, binned into terciles. Arms are assigned **before first
 exposure**, when a card's realized FSRS difficulty does not yet exist. The
-baseline used here is the FSRS **default initial difficulty** `D0(G)` evaluated
-at the "Good" first grade (G = 3) from the deck's FSRS weights — the
-pre-exposure expectation, not a realized value.
+baseline is the persisted per-concept **`concepts.baseline_difficulty`** (schema
+v2), authored when the concept is created.
 
-> **ASSUMPTION — surfaced for confirmation.** Using `D0(3)` as the pre-exposure
-> difficulty proxy is a design choice, not a value read from the collection.
-> The assign query isolates it in one CTE named `baseline_difficulty` and
-> documents the `D0` weights it uses. If a different baseline is intended,
-> change that CTE only.
+When `baseline_difficulty` is NULL, `assign_arms.sql` falls back to the FSRS
+**default initial difficulty** `D0(G)` at the "Good" first grade (G = 3) —
+`D0(G) = w4 − exp(w5·(G−1)) + 1`, clamped `[1,10]`, FSRS-5 defaults
+`w4 = 7.1949, w5 = 0.5345` ⇒ `D0(3) ≈ 5.28`.
+
+> **NOTE.** The difficulty tercile only discriminates once concepts carry a real
+> `baseline_difficulty`. Concepts left NULL all collapse onto the constant
+> `D0(3)` fallback and land in one undiscriminated band. Populate the column at
+> concept-authoring time to stratify meaningfully. The fallback lives in one CTE
+> named `baseline_difficulty` in the assign query — change it there only.
 
 ## Output shape
 

@@ -19,25 +19,30 @@
 -- primary key so an already-assigned concept is never overwritten.
 
 WITH
--- Baseline (pre-exposure) FSRS difficulty proxy. Arms are assigned before first
--- exposure, so no realized FSRS difficulty exists yet. We use the FSRS default
--- INITIAL difficulty D0(G) evaluated at the "Good" first grade G = 3:
+-- Baseline (pre-exposure) FSRS difficulty for stratification. Preferred source
+-- is the persisted per-concept `concepts.baseline_difficulty`, authored before
+-- first exposure (schema v2). When it is NULL we fall back to the FSRS default
+-- INITIAL difficulty D0(G) at the "Good" first grade G = 3:
 --
 --     D0(G) = w4 - exp(w5 * (G - 1)) + 1,  clamped to [1, 10]
 --
 -- with the FSRS-5 default weights  w4 = 7.1949,  w5 = 0.5345.
 -- D0(3) = 7.1949 - exp(0.5345 * 2) + 1 ≈ 5.283 (within [1,10], clamp inert).
 --
--- ASSUMPTION (see queries/CONVENTIONS.md "Baseline difficulty"): D0(3) is a
--- design choice, not a value read from the collection, and gap.db carries no
--- per-concept FSRS weights — so D0(3) is the same scalar for every concept.
--- To change the baseline proxy, edit ONLY this CTE.
+-- NOTE (see queries/CONVENTIONS.md "Baseline difficulty"): once every concept
+-- carries a baseline_difficulty the difficulty tercile is a real stratifier.
+-- Concepts left NULL share the constant D0(3) fallback and so land in one
+-- undiscriminated band — populate the column to stratify meaningfully. To change
+-- the fallback proxy, edit ONLY this CTE.
 baseline_difficulty AS (
   SELECT
     c.id     AS concept_id,
     c.code   AS code,
     c.weight AS weight,
-    max(1.0, min(10.0, 7.1949 - exp(0.5345 * (3 - 1)) + 1.0)) AS d0
+    COALESCE(
+      c.baseline_difficulty,
+      max(1.0, min(10.0, 7.1949 - exp(0.5345 * (3 - 1)) + 1.0))
+    ) AS d0
   FROM gap.concepts c
 ),
 -- Bin the full pool into exam-weight and difficulty terciles. ntile ORDER BY is
