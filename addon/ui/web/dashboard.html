@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>POV-1 Study Dashboard</title>
+  <link rel="stylesheet" href="dashboard.css" />
+</head>
+<body>
+  <main class="wrap" id="app">
+    <header class="site-header">
+      <div class="site-header__titles">
+        <h1 class="site-header__title">POV-1 — Card mastery vs. novel-item accuracy</h1>
+        <p class="site-header__subtitle">Within-student, between-concept experiment · gate / nogate / vanilla</p>
+      </div>
+      <div class="site-header__meta">
+        <span class="site-header__meta-label">Generated</span>
+        <time id="generated-ts" class="site-header__meta-value">—</time>
+      </div>
+    </header>
+
+    <!-- Fatal error banner (JS failure / bad data) -->
+    <div id="error-banner" class="error-banner" hidden></div>
+
+    <!-- HERO: crossover -->
+    <section class="card hero" aria-labelledby="hero-title">
+      <div class="card__head">
+        <h2 id="hero-title" class="card__title">Crossover — novel-item accuracy by exposure bucket</h2>
+        <p class="card__note">Primary endpoint. Prediction: Arm A (gate) worse at exposures 1–4, better at 5+ — a sign flip in the per-bucket difference.</p>
+      </div>
+      <div id="crossover" class="crossover"></div>
+    </section>
+
+    <!-- Stat tiles -->
+    <section class="tiles" id="tiles" aria-label="Secondary endpoints"></section>
+
+    <!-- Arms summary -->
+    <section class="card" aria-labelledby="arms-title">
+      <div class="card__head">
+        <h2 id="arms-title" class="card__title">Arms</h2>
+        <p class="card__note">Concepts assigned and retired per arm.</p>
+      </div>
+      <div id="arms" class="arms"></div>
+    </section>
+
+    <!-- Abstain block -->
+    <section class="card" aria-labelledby="abstain-title">
+      <div class="card__head">
+        <h2 id="abstain-title" class="card__title">Abstain rule</h2>
+        <p class="card__note">No Performance score below <span id="abstain-threshold">8</span> novel attempts — coverage shown instead. Below-line vs. above-line accuracy tests whether the threshold tracks anything.</p>
+      </div>
+      <div id="abstain" class="abstain"></div>
+    </section>
+
+    <!-- Per-concept table -->
+    <section class="card" aria-labelledby="table-title">
+      <div class="card__head">
+        <h2 id="table-title" class="card__title">Concepts</h2>
+        <p class="card__note">Abstained rows (below the attempt threshold) are dimmed and show coverage instead of a Performance score.</p>
+      </div>
+      <div class="table-scroll">
+        <table class="ctable" id="concept-table">
+          <thead>
+            <tr>
+              <th scope="col">Code</th>
+              <th scope="col">Name</th>
+              <th scope="col">Arm</th>
+              <th scope="col" class="num">Novel att.</th>
+              <th scope="col" class="num">Performance</th>
+              <th scope="col" class="num">Card mastery</th>
+              <th scope="col">Retired</th>
+            </tr>
+          </thead>
+          <tbody id="concept-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer class="site-footer">
+      <span>Self-contained dashboard · no network, no external assets.</span>
+    </footer>
+  </main>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>
