@@ -1,0 +1,161 @@
+// sync_gap.proto — the sidecar sync contract shared across desktop, the Rust
+// engine, and the mobile (AnkiDroid/iOS) companion.
+//
+// This is the project's OWN proto (separate from the Anki fork's proto tree). It
+// describes what one device sends another to reconcile the append-only `gap.db`
+// sidecar (see schema/gap.sql). The wire messages mirror the merge rules
+// implemented and TESTED in sync/reconcile.py:
+//
+//   * append-only tables (novel_items / novel_item_concepts / novel_revlog /
+//     note_concepts / concepts) are grow-only sets, merged by UNION on their
+//     epoch-ms / composite primary keys — idempotent, commutative, associative
+//     (a CRDT-style G-Set). Sending the same row twice is a no-op on the peer.
+//   * arms / retirements are one-row-per-concept, merged by EARLIEST timestamp.
+//
+// Every row keeps Anki's `usn` (update sequence number) and, where present,
+// `mod` (epoch-ms modification stamp), so the payload can also be diffed against
+// a peer's high-water USN to send only what changed — exactly how Anki's own
+// collection sync batches. A full-state exchange (send everything) and a
+// delta exchange (send rows above the peer's USN) are both valid because the
+// merge is idempotent either way.
+//
+// Compile-check:
+//   protoc --proto_path=proto --descriptor_set_out=/dev/null proto/sync_gap.proto
+
+syntax = "proto3";
+
+package superbuilders.gap.sync.v1;
+
+option optimize_for = LITE_RUNTIME;
+
+// --------------------------------------------------------------------------- //
+// Row messages — one per sidecar table. Field numbers are stable wire IDs;
+// field names/types mirror schema/gap.sql exactly.
+// --------------------------------------------------------------------------- //
+
+// gap.concepts — authored reference data (merged by union on id).
+message Concept {
+  int64  id                  = 1;   // INTEGER PRIMARY KEY
+  string code                = 2;   // official outline code, e.g. "1A.2"
+  string name                = 3;
+  double weight              = 4;   // exam weight
+  optional double baseline_difficulty = 5;  // NULL until authored
+}
+
+// gap.note_concepts — derived tag index (union on (guid, concept_id)).
+message NoteConcept {
+  string guid       = 1;
+  int64  concept_id = 2;
+}
+
+// gap.novel_items — objects Anki has no notion of (union on id; guid UNIQUE).
+message NovelItem {
+  int64  id         = 1;   // epoch ms, primary key
+  string guid       = 2;   // UNIQUE
+  string source_id  = 3;   // provenance; untraceable AI output zeroes the section
+  bool   is_holdout = 4;   // set at INSERT, never updated
+  int64  mod        = 5;   // epoch-ms modification stamp
+  int32  usn        = 6;   // update sequence number (-1 == pending)
+}
+
+// gap.novel_item_concepts — item↔concept links (union on (item_id, concept_id)).
+message NovelItemConcept {
+  int64 item_id    = 1;
+  int64 concept_id = 2;
+}
+
+// gap.novel_revlog — the append-only attempt log (union on id). THE table the
+// PRD's "0 lost / 0 duplicated across 20 cards" integrity test measures.
+message NovelRevlogEntry {
+  int64 id      = 1;   // epoch ms, primary key
+  int64 item_id = 2;
+  bool  correct = 3;
+  int64 time    = 4;   // latency in ms, same units as main.revlog.time
+  int32 usn     = 5;
+}
+
+// gap.arms — one row per concept; EARLIEST assigned_ms wins on conflict.
+message Arm {
+  int64  concept_id  = 1;   // primary key
+  string arm         = 2;   // "gate" | "nogate" | "vanilla"
+  int64  assigned_ms = 3;   // must predate first exposure; earliest authoritative
+}
+
+// gap.retirements — one row per concept; EARLIEST retired_ms wins on conflict.
+message Retirement {
+  int64  concept_id = 1;   // primary key
+  int64  retired_ms = 2;   // when the arm's retirement rule fired
+  string trigger    = 3;   // "novel_gate" | "card_mastery" | "anki_default"
+  int32  usn        = 4;
+}
+
+// --------------------------------------------------------------------------- //
+// Batch payload — what one device hands another to reconcile.
+// --------------------------------------------------------------------------- //
+
+// A snapshot (or delta) of one sidecar, ready to be merged into a peer via the
+// same rules sync/reconcile.py applies. Repeated fields are order-independent:
+// the peer's merge is commutative, so batches may arrive in any order and be
+// applied more than once with no effect.
+message SidecarBatch {
+  // Schema version from gap.meta['schema']; peer refuses a higher unknown major.
+  int32 schema_version = 1;
+
+  // Optional lower bound: rows in this batch all have usn > since_usn. Zero /
+  // unset means "full state" (send everything — still safe, just larger).
+  int32 since_usn = 2;
+
+  repeated Concept          concepts            = 10;
+  repeated NoteConcept      note_concepts       = 11;
+  repeated NovelItem        novel_items         = 12;
+  repeated NovelItemConcept novel_item_concepts = 13;
+  repeated NovelRevlogEntry novel_revlog        = 14;
+  repeated Arm              arms                = 15;
+  repeated Retirement       retirements         = 16;
+}
+
+// --------------------------------------------------------------------------- //
+// The exchange a Rust/mobile layer performs. Two round-trips at most:
+// exchange high-water marks, then swap batches. Because the merge is a CRDT
+// union, there is no leader, no lock, and either side may go first.
+// --------------------------------------------------------------------------- //
+
+// Per-table high-water USN, so a peer can request only newer rows (delta sync).
+message UsnCursor {
+  int32 novel_items  = 1;
+  int32 novel_revlog = 2;
+  int32 arms         = 3;
+  int32 retirements  = 4;
+}
+
+message SyncHello {
+  string device_id      = 1;   // opaque; distinguishes phone vs desktop instance
+  int32  schema_version = 2;
+  UsnCursor have         = 3;   // "here is how current I am"
+}
+
+message SyncPullRequest {
+  UsnCursor since = 1;          // "send me everything newer than this"
+}
+
+message SyncPushRequest {
+  SidecarBatch batch = 1;       // "merge these rows"
+}
+
+// Result of applying a pushed batch — the numbers the integrity test asserts.
+message SyncApplyResult {
+  int32 rows_received   = 1;
+  int32 rows_inserted   = 2;   // newly merged
+  int32 rows_ignored    = 3;   // already present (idempotent no-ops)
+  int32 conflicts_resolved = 4; // arms/retirements where earliest-wins fired
+  int32 rows_duplicated = 5;   // MUST be 0 by construction (append-only + PK)
+  int32 rows_lost       = 6;   // MUST be 0 by construction
+}
+
+// The engine boundary a Rust core exposes to both the desktop add-on and the
+// mobile app (the same contract on both sides of the FFI).
+service GapSyncEngine {
+  rpc Hello (SyncHello)          returns (SyncHello);
+  rpc Pull  (SyncPullRequest)    returns (SidecarBatch);
+  rpc Push  (SyncPushRequest)    returns (SyncApplyResult);
+}
