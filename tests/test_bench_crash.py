@@ -44,7 +44,8 @@ def test_seed_builds_and_engine_runs() -> None:
 def test_bench_returns_timing_dicts() -> None:
     bench = bench_engine.run_benchmarks(n_cards=2000, m_concepts=50, repetitions=3)
     assert set(bench["results"]) == {
-        "queue", "dashboard_load", "dashboard_refresh", "mastery"}, bench["results"].keys()
+        "queue", "dashboard_load", "dashboard_refresh", "analysis_full", "mastery",
+    }, bench["results"].keys()
     for name, s in bench["results"].items():
         for key in ("median", "p95", "worst", "best", "n"):
             assert key in s, f"{name} missing {key}"

@@ -22,16 +22,16 @@ box can't build/run native mobile GUIs or record the Anki Qt app)
 | Anki add-on (Python/aqt layer) | ✅ | `addon/` |
 | Dashboard (standalone + webview) | ✅ | `addon/ui/web/` |
 
-## 1. Rust engine modification — CRITICAL (PRD's load-bearing requirement)
+## 1. Rust engine modification — CRITICAL (PRD's load-bearing requirement) — DONE
 
-| Requirement | Status | Plan / where |
+| Requirement | Status | Where |
 |---|---|---|
-| Real modification to Anki's Rust scheduling/query engine | 🟡 | Fork building at `/home/user/anki-src`; change targets `rslib/src/scheduler` or `search` |
-| ≥ 3 Rust unit tests | ⬜ | in the new rslib module |
-| Python integration test calling the Rust function | ⬜ | via `anki` backend RPC |
-| Documented rationale for why it belongs in Rust | ⬜ | `docs/RUST_RATIONALE.md` |
-| Undo works + collection doesn't corrupt (proof) | ⬜ | Rust test + Python undo test |
-| protobuf messaging Rust↔Python | ⬜ | new RPC in `proto/anki/*.proto` |
+| Real modification to Anki's Rust scheduling/query engine | ✅ | new `ComputeReadinessGap` RPC in `rslib/src/scheduler/readiness.rs` (fork 26.05); patch in `rust-fork/` |
+| ≥ 3 Rust unit tests | ✅ | 4 tests in `readiness.rs`; pass as part of 556 (`just test-rust`) |
+| Python integration test calling the Rust function | ✅ | `rust-fork/test_readiness_integration.py` — calls the RPC across the protobuf bridge (passes) |
+| Documented rationale for why it belongs in Rust | ✅ | `docs/RUST_RATIONALE.md` |
+| Undo works + collection doesn't corrupt (proof) | ✅ | RPC is read-only; integration test asserts collection unchanged |
+| protobuf messaging Rust↔Python | ✅ | `ConceptGap`/`ConceptStake` in `proto/anki/scheduler.proto` |
 
 ## 2. Three separated scores + DOK framing
 
