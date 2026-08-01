@@ -26,23 +26,25 @@ WITH
 --
 --     D0(G) = w4 - exp(w5 * (G - 1)) + 1,  clamped to [1, 10]
 --
--- with the FSRS-5 default weights  w4 = 7.1949,  w5 = 0.5345.
--- D0(3) = 7.1949 - exp(0.5345 * 2) + 1 ≈ 5.283 (within [1,10], clamp inert).
+-- with the FSRS-5 default weights  w4 = 7.1949,  w5 = 0.5345, giving
+--     D0(3) = 7.1949 - exp(1.069) + 1 = 5.282434  (within [1,10], clamp inert).
 --
--- NOTE (see queries/CONVENTIONS.md "Baseline difficulty"): once every concept
--- carries a baseline_difficulty the difficulty tercile is a real stratifier.
--- Concepts left NULL share the constant D0(3) fallback and so land in one
--- undiscriminated band — populate the column to stratify meaningfully. To change
--- the fallback proxy, edit ONLY this CTE.
+-- This runs LIVE inside Anki, whose bundled SQLite ships NO math functions
+-- (no exp/pow/sqrt) — so the fallback is the PRECOMPUTED constant 5.282434,
+-- not an exp() call. Since it is one scalar for every NULL-difficulty concept,
+-- baking the value in changes nothing but portability. (See CONVENTIONS.md
+-- "Math functions" and "Baseline difficulty".)
+--
+-- NOTE: once every concept carries a real baseline_difficulty the difficulty
+-- tercile is a genuine stratifier. Concepts left NULL share the constant and so
+-- land in one undiscriminated band — populate the column to stratify. To change
+-- the fallback, edit ONLY this literal.
 baseline_difficulty AS (
   SELECT
     c.id     AS concept_id,
     c.code   AS code,
     c.weight AS weight,
-    COALESCE(
-      c.baseline_difficulty,
-      max(1.0, min(10.0, 7.1949 - exp(0.5345 * (3 - 1)) + 1.0))
-    ) AS d0
+    COALESCE(c.baseline_difficulty, 5.282434) AS d0
   FROM gap.concepts c
 ),
 -- Bin the full pool into exam-weight and difficulty terciles. ntile ORDER BY is
