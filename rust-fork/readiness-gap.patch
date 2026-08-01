@@ -1,0 +1,267 @@
+diff --git a/proto/anki/scheduler.proto b/proto/anki/scheduler.proto
+index b056d1d..4d28d39 100644
+--- a/proto/anki/scheduler.proto
++++ b/proto/anki/scheduler.proto
+@@ -64,6 +64,14 @@ service SchedulerService {
+   // The number of days the calculated interval was fuzzed by on the previous
+   // review (if any). Utilized by the FSRS add-on.
+   rpc FuzzDelta(FuzzDeltaRequest) returns (FuzzDeltaResponse);
++
++  // Points-at-stake / readiness-gap ordering (SuperBuilders novel-item gate).
++  // For each concept, computes card_mastery = mean FSRS retrievability over the
++  // supplied cards using Anki's own fsrs::current_retrievability, then
++  // points = (card_mastery - novel_accuracy) * exam_weight, and returns the
++  // concepts ordered by points descending. Read-only (no collection mutation).
++  rpc ComputeReadinessGap(ComputeReadinessGapRequest)
++      returns (ComputeReadinessGapResponse);
+ }
+ 
+ // Implicitly includes any of the above methods that are not listed in the
+@@ -483,3 +491,37 @@ message FuzzDeltaRequest {
+ message FuzzDeltaResponse {
+   sint32 delta_days = 1;
+ }
++
++// --- SuperBuilders novel-item gate: points-at-stake / readiness gap ---------
++
++message ConceptGap {
++  // The cards belonging to this concept (card_mastery is their mean FSRS
++  // retrievability, computed natively in Rust).
++  repeated int64 card_ids = 1;
++  // Accuracy on novel items for this concept, in [0, 1] (supplied by the
++  // add-on's gap.db sidecar; not part of the Anki collection).
++  double novel_accuracy = 2;
++  // Exam weight for this concept.
++  double exam_weight = 3;
++  // Opaque concept identifier echoed back in the response.
++  string concept_code = 4;
++}
++
++message ComputeReadinessGapRequest {
++  repeated ConceptGap concepts = 1;
++}
++
++message ConceptStake {
++  string concept_code = 1;
++  // Mean FSRS retrievability over the concept's cards, in [0, 1].
++  double card_mastery = 2;
++  double novel_accuracy = 3;
++  double exam_weight = 4;
++  // (card_mastery - novel_accuracy) * exam_weight.
++  double points = 5;
++}
++
++message ComputeReadinessGapResponse {
++  // Concepts ordered by points descending (largest gap first).
++  repeated ConceptStake ordered = 1;
++}
+diff --git a/rslib/src/scheduler/mod.rs b/rslib/src/scheduler/mod.rs
+index 93aee3c..2e0af68 100644
+--- a/rslib/src/scheduler/mod.rs
++++ b/rslib/src/scheduler/mod.rs
+@@ -13,6 +13,7 @@ pub(crate) mod filtered;
+ pub mod fsrs;
+ pub mod new;
+ pub(crate) mod queue;
++pub(crate) mod readiness;
+ mod reviews;
+ mod service;
+ pub mod states;
+diff --git a/rslib/src/scheduler/readiness.rs b/rslib/src/scheduler/readiness.rs
+new file mode 100644
+index 0000000..bd7d0cb
+--- /dev/null
++++ b/rslib/src/scheduler/readiness.rs
+@@ -0,0 +1,172 @@
++// Copyright: Ankitects Pty Ltd and contributors
++// License: GNU AGPL, version 3 or later; http://www.gnu.org/licenses/agpl.html
++
++//! Points-at-stake / readiness-gap ordering — the SuperBuilders novel-item gate,
++//! implemented natively in the scheduling engine.
++//!
++//! The thesis (see the project's PREREGISTRATION.md) is that card mastery and
++//! performance on novel items decouple past a few exposures. This RPC ranks
++//! concepts by the *size of that gap*: for each concept it computes
++//! `card_mastery` = the mean FSRS retrievability of the concept's cards — using
++//! Anki's own [`fsrs::current_retrievability`], the exact function the stats
++//! graphs use, so the number stays consistent with the scheduler — then
++//! `points = (card_mastery - novel_accuracy) * exam_weight`, and returns the
++//! concepts ordered by `points` descending (largest gap first).
++//!
++//! It lives in Rust rather than the Python add-on because it is a hot-path query
++//! over the whole due set that reads each card's FSRS memory state: computing it
++//! natively avoids a per-card Python↔backend round-trip and reuses the engine's
++//! retrievability implementation. It is read-only — it never mutates the
++//! collection, so it cannot corrupt it and takes no part in undo. See
++//! docs/RUST_RATIONALE.md in the SuperBuilders repo.
++
++use anki_proto::scheduler::ComputeReadinessGapRequest;
++use anki_proto::scheduler::ComputeReadinessGapResponse;
++use anki_proto::scheduler::ConceptStake;
++use fsrs::current_retrievability;
++use fsrs::FSRS5_DEFAULT_DECAY;
++
++use crate::card::FsrsMemoryState;
++use crate::prelude::*;
++
++/// The points-at-stake key: how much the card score overstates readiness,
++/// scaled by exam weight. Negative when novel accuracy exceeds card mastery.
++pub(crate) fn readiness_points(card_mastery: f32, novel_accuracy: f32, exam_weight: f32) -> f32 {
++    (card_mastery - novel_accuracy) * exam_weight
++}
++
++/// FSRS retrievability of a single card's memory state after `elapsed_days`,
++/// via Anki's own fsrs function. Elapsed is clamped at 0 (a just-reviewed card
++/// reads R = 1, never > 1).
++pub(crate) fn card_retrievability(state: FsrsMemoryState, elapsed_days: f32, decay: f32) -> f32 {
++    current_retrievability(state.into(), elapsed_days.max(0.0), decay)
++}
++
++impl Collection {
++    pub(crate) fn compute_readiness_gap(
++        &mut self,
++        input: ComputeReadinessGapRequest,
++    ) -> Result<ComputeReadinessGapResponse> {
++        let timing = self.timing_today()?;
++        let mut ordered: Vec<ConceptStake> = Vec::with_capacity(input.concepts.len());
++
++        for concept in input.concepts {
++            let mut sum_r = 0.0_f32;
++            let mut count = 0_u32;
++            for cid in &concept.card_ids {
++                if let Some(card) = self.storage.get_card(CardId(*cid))? {
++                    if let Some(state) = card.memory_state {
++                        let elapsed_secs =
++                            card.seconds_since_last_review(&timing).unwrap_or_default();
++                        sum_r += card_retrievability(
++                            state,
++                            elapsed_secs as f32 / 86_400.0,
++                            card.decay.unwrap_or(FSRS5_DEFAULT_DECAY),
++                        );
++                        count += 1;
++                    }
++                }
++            }
++            // Cards without FSRS memory state contribute no R; a concept with no
++            // scored card has mastery 0.0 (matching the add-on's engine).
++            let card_mastery = if count > 0 { sum_r / count as f32 } else { 0.0 };
++            let points = readiness_points(
++                card_mastery,
++                concept.novel_accuracy as f32,
++                concept.exam_weight as f32,
++            );
++            ordered.push(ConceptStake {
++                concept_code: concept.concept_code,
++                card_mastery: card_mastery as f64,
++                novel_accuracy: concept.novel_accuracy,
++                exam_weight: concept.exam_weight,
++                points: points as f64,
++            });
++        }
++
++        // Largest gap first; stable tiebreak on concept_code for determinism.
++        ordered.sort_by(|a, b| {
++            b.points
++                .partial_cmp(&a.points)
++                .unwrap_or(std::cmp::Ordering::Equal)
++                .then_with(|| a.concept_code.cmp(&b.concept_code))
++        });
++
++        Ok(ComputeReadinessGapResponse { ordered })
++    }
++}
++
++#[cfg(test)]
++mod test {
++    use anki_proto::scheduler::ComputeReadinessGapRequest;
++    use anki_proto::scheduler::ConceptGap;
++
++    use super::*;
++
++    #[test]
++    fn points_is_gap_times_weight() {
++        // 0.9 mastery, 0.6 novel, weight 2.0 -> (0.3)*2 = 0.6
++        assert!((readiness_points(0.9, 0.6, 2.0) - 0.6).abs() < 1e-6);
++        // novel accuracy above card mastery -> negative points (the good case)
++        assert!(readiness_points(0.5, 0.8, 1.0) < 0.0);
++        // zero exam weight -> zero stake
++        assert_eq!(readiness_points(0.9, 0.1, 0.0), 0.0);
++    }
++
++    #[test]
++    fn retrievability_is_one_at_zero_elapsed_and_decreases() {
++        let state = FsrsMemoryState {
++            stability: 40.0,
++            difficulty: 5.0,
++        };
++        let r0 = card_retrievability(state, 0.0, FSRS5_DEFAULT_DECAY);
++        let r10 = card_retrievability(state, 10.0, FSRS5_DEFAULT_DECAY);
++        let r100 = card_retrievability(state, 100.0, FSRS5_DEFAULT_DECAY);
++        assert!((r0 - 1.0).abs() < 1e-4, "R at t=0 should be 1.0, got {r0}");
++        assert!(r10 < r0 && r100 < r10, "R must fall as time elapses");
++        assert!(r100 > 0.0 && r100 < 1.0);
++    }
++
++    #[test]
++    fn mean_mastery_and_points_compose() {
++        let s = FsrsMemoryState {
++            stability: 40.0,
++            difficulty: 5.0,
++        };
++        let r_fresh = card_retrievability(s, 0.0, FSRS5_DEFAULT_DECAY);
++        let r_old = card_retrievability(s, 40.0, FSRS5_DEFAULT_DECAY);
++        let mean = (r_fresh + r_old) / 2.0;
++        assert!(mean < r_fresh && mean > r_old);
++        let pts = readiness_points(mean, 0.5, 1.5);
++        assert!((pts - (mean - 0.5) * 1.5).abs() < 1e-6);
++    }
++
++    #[test]
++    fn orders_by_gap_and_handles_empty_concepts() {
++        // Fresh collection, no cards: every concept has mastery 0.0, so
++        // points = (0 - novel)*weight. Concept A (novel 0.2) outranks B (0.9).
++        let mut col = Collection::new();
++        let out = col
++            .compute_readiness_gap(ComputeReadinessGapRequest {
++                concepts: vec![
++                    ConceptGap {
++                        card_ids: vec![],
++                        novel_accuracy: 0.2,
++                        exam_weight: 1.0,
++                        concept_code: "A".into(),
++                    },
++                    ConceptGap {
++                        card_ids: vec![],
++                        novel_accuracy: 0.9,
++                        exam_weight: 1.0,
++                        concept_code: "B".into(),
++                    },
++                ],
++            })
++            .unwrap();
++        assert_eq!(out.ordered.len(), 2);
++        assert_eq!(out.ordered[0].concept_code, "A");
++        assert!((out.ordered[0].card_mastery - 0.0).abs() < 1e-6);
++        assert!(out.ordered[0].points > out.ordered[1].points);
++    }
++}
+diff --git a/rslib/src/scheduler/service/mod.rs b/rslib/src/scheduler/service/mod.rs
+index 073706c..3828f88 100644
+--- a/rslib/src/scheduler/service/mod.rs
++++ b/rslib/src/scheduler/service/mod.rs
+@@ -44,6 +44,15 @@ impl crate::services::SchedulerService for Collection {
+         self.studied_today().map(Into::into)
+     }
+ 
++    /// Points-at-stake / readiness-gap ordering (SuperBuilders novel-item gate).
++    /// Read-only. See crate::scheduler::readiness.
++    fn compute_readiness_gap(
++        &mut self,
++        input: scheduler::ComputeReadinessGapRequest,
++    ) -> Result<scheduler::ComputeReadinessGapResponse> {
++        self.compute_readiness_gap(input)
++    }
++
+     /// Message rendering only, for old graphs.
+     fn studied_today_message(
+         &mut self,
