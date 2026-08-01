@@ -57,9 +57,9 @@ box can't build/run native mobile GUIs or record the Anki Qt app)
 
 | Requirement | Status | Where |
 |---|---|---|
-| AI-generated cards traceable to named sources | 🟡 | `ai/` (in progress) — source_id + span per card |
-| Evals beating a simpler baseline (keyword / embedding) | 🟡 | `ai/eval_generation.py` — grounding + TF-IDF-vs-keyword retrieval |
-| App functions with AI disabled | 🟡 | deterministic fallback path (the no-key mode) |
+| AI-generated cards traceable to named sources | ✅ | `ai/generate.py` + `ai/generated_cards.json` (source_id + span; untraceable dropped) |
+| Evals beating a simpler baseline (keyword / embedding) | ✅ | `ai/eval_generation.py` — AI > keyword & TF-IDF on grounding + retrieval |
+| App functions with AI disabled | ✅ | `ai/generate.py` deterministic `--no-ai` path (runs, tested) |
 | Uses a frontier LLM | 🟡 | LLM path guarded on API key (none in box); Anthropic swap noted |
 
 ## 5. Coverage map
@@ -95,7 +95,7 @@ box can't build/run native mobile GUIs or record the Anki Qt app)
 | Attribution to Anki (+ BSD components) | ✅ | `NOTICE` |
 | Clean build on a fresh machine | 🟡 | `scripts/bundle_addon.py` + `docs/INSTALL.md`; add fresh-machine doc |
 | Traceability table (feature/POV → code → measurable result) | ✅ | `docs/TRACEABILITY.md` (every requirement → file → test) |
-| Source code | 🟡 | this repo (growing) |
+| Source code | ✅ | this repo — 96 files, ~12.4k lines, 8/8 py suites + 556 rust tests |
 | Demo video | 🌐 | `docs/DEMO_SCRIPT.md` (shot list) + `sim/dashboard_preview.png`; Qt screen-recording needs the user's machine |
 
 ## Loop order
