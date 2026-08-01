@@ -120,12 +120,21 @@ def dashboard_payload(col: Any) -> dict:
     return stats.dashboard_payload(gapdb)
 
 
+def _today(col: Any) -> int | None:
+    """The collection's current day number for the due filter, or None if the
+    scheduler is unavailable (keeps the facade usable outside a live collection)."""
+    try:
+        return col.sched.today
+    except Exception:
+        return None
+
+
 def points_at_stake(col: Any) -> list[dict]:
     """Concepts ranked by points-at-stake (for the study-build menu action)."""
     from gap import queue
 
     gapdb = open_for_collection(col)
-    return queue.points_at_stake(gapdb)
+    return queue.points_at_stake(gapdb, today=_today(col))
 
 
 def ranked_card_ids(col: Any) -> list[int]:
@@ -133,7 +142,7 @@ def ranked_card_ids(col: Any) -> list[int]:
     from gap import queue
 
     gapdb = open_for_collection(col)
-    return queue.ranked_card_ids(gapdb)
+    return queue.ranked_card_ids(gapdb, today=_today(col))
 
 
 # --------------------------------------------------------------------------- #

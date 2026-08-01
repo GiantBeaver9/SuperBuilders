@@ -26,18 +26,21 @@ from gap import mastery
 # --------------------------------------------------------------------------- #
 # Math-free "due card" fetch (Anki-SQLite-safe).
 #
-# DUE PREDICATE (mirrors points_at_stake.sql's documented portable proxy):
-#   a card is due when it is a review or day-learning card — `queue IN (2, 3)` —
-#   whose `due` value is at or before "now" (`due <= at_ms`). This is the same
-#   simplification the canonical SQL makes: Anki's real `cards.due` units differ
-#   by queue (review / day-learning is a day number since collection creation;
-#   intraday learning is epoch seconds), so comparing `due` to an epoch-ms "now"
-#   is a deliberately portable proxy — "due today-ish" — not a faithful
-#   reproduction of Anki's per-queue due arithmetic. It uses only column reads,
-#   `IN`, and `<=`: no math function, so it runs live inside Anki. The `?` bind is
-#   Python-side (the no-bind-params rule governs the committed .sql files only).
+# DUE PREDICATE. A candidate is a review or day-learning card — `queue IN (2, 3)`.
+# For those queues Anki stores `cards.due` as a DAY NUMBER (days since collection
+# creation), and a card is due when `due <= today`, where `today` is the
+# collection's current day number (`col.sched.today`).
+#   * Live add-on: `service` passes `today`, so the queue filters genuinely-due
+#     cards with correct day-number semantics.
+#   * Offline (sim / tests, `open_sidecar`): there is no collection day cutoff, so
+#     `today` is None and we rank ALL review/day-learning cards for the concept —
+#     stated honestly rather than hidden behind an always-true `due <= now_ms`
+#     comparison (day-number `due` vs an epoch-ms "now" never filters anything).
+# Both variants use only column reads, `IN`, and `<=` — no math function — so the
+# query runs live inside Anki. The `?` bind is Python-side (the no-bind rule
+# governs the committed .sql files only).
 # --------------------------------------------------------------------------- #
-_DUE_CARDS_SQL = """
+_DUE_CARDS_BASE = """
 SELECT
   c.id          AS card_id,
   nc.concept_id AS concept_id,
@@ -48,11 +51,12 @@ JOIN main.notes n         ON n.id   = c.nid
 JOIN gap.note_concepts nc ON nc.guid = n.guid
 JOIN gap.concepts con     ON con.id  = nc.concept_id
 WHERE c.queue IN (2, 3)
-  AND c.due <= ?
 """
+_DUE_TODAY_CLAUSE = "  AND c.due <= ?\n"
 
 
-def points_at_stake(gapdb: Any, at_ms: int | None = None) -> list[dict]:
+def points_at_stake(gapdb: Any, at_ms: int | None = None,
+                    today: int | None = None) -> list[dict]:
     """Rank every DUE card by the points-at-stake key, largest gap first.
 
     Returns one dict per due card:
@@ -73,14 +77,22 @@ def points_at_stake(gapdb: Any, at_ms: int | None = None) -> list[dict]:
 
     :param gapdb: a ``GapDB`` (Anki ``col.db`` or ``open_sidecar`` proxy).
     :param at_ms: evaluation instant in epoch ms; ``None`` means "now".
+    :param today: the collection's current day number (``col.sched.today``). When
+        given, only cards with ``due <= today`` are returned (genuinely due). When
+        ``None`` (offline), every review/day-learning card is ranked.
     """
     at = mastery.now_ms() if at_ms is None else at_ms
 
     card_mastery = mastery.card_mastery_by_concept(gapdb, at)         # concept -> mean R
     novel_practice = mastery.novel_accuracy_by_concept(gapdb, holdout=False)
 
+    if today is None:
+        rows = gapdb.all(_DUE_CARDS_BASE)
+    else:
+        rows = gapdb.all(_DUE_CARDS_BASE + _DUE_TODAY_CLAUSE, today)
+
     out: list[dict] = []
-    for card_id, concept_id, code, weight in gapdb.all(_DUE_CARDS_SQL, at):
+    for card_id, concept_id, code, weight in rows:
         cm = card_mastery.get(concept_id, 0.0)          # COALESCE missing mastery -> 0.0
         na = novel_practice.get(concept_id, 0.0)        # COALESCE missing novel   -> 0.0
         w = float(weight)
@@ -101,12 +113,15 @@ def points_at_stake(gapdb: Any, at_ms: int | None = None) -> list[dict]:
     return out
 
 
-def ranked_card_ids(gapdb: Any, at_ms: int | None = None) -> list[int]:
+def ranked_card_ids(gapdb: Any, at_ms: int | None = None,
+                    today: int | None = None) -> list[int]:
     """The due card ids in points-at-stake order (largest gap first).
 
     Thin projection of :func:`points_at_stake` down to just ``card_id``.
 
     :param gapdb: a ``GapDB`` (Anki ``col.db`` or ``open_sidecar`` proxy).
     :param at_ms: evaluation instant in epoch ms; ``None`` means "now".
+    :param today: the collection's current day number (``col.sched.today``); see
+        :func:`points_at_stake`.
     """
-    return [row["card_id"] for row in points_at_stake(gapdb, at_ms)]
+    return [row["card_id"] for row in points_at_stake(gapdb, at_ms, today)]
