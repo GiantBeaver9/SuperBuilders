@@ -1,0 +1,40 @@
+{
+  "exam": "LSAT",
+  "outline_version": "illustrative-2026-08",
+  "illustrative": true,
+  "note": "ILLUSTRATIVE, compact LSAT outline used to demonstrate the coverage map. It is intentionally small (3 sections, 10 concepts) and is NOT the authoritative LSAC content outline. Swap this file for the official outline of whichever exam a student is preparing for; the only contract the engine relies on is that each concept 'code' here matches a gap.concepts.code row (authored on notes as the tag concept::<code>). Topic and concept 'weight' values are exam weights that roll up under each section and drive queue ordering; here they are illustrative proportions that sum to ~1.0.",
+  "source": "Structure paraphrased from the historical LSAT section layout (Logical Reasoning, Analytical Reasoning / Logic Games, Reading Comprehension). Replace with the current official LSAC outline for production use.",
+  "topics": [
+    {
+      "code": "LR",
+      "name": "Logical Reasoning",
+      "weight": 0.50,
+      "concepts": [
+        {"code": "LR.1", "name": "Necessary / Sufficient Assumption", "weight": 0.12},
+        {"code": "LR.2", "name": "Strengthen / Weaken", "weight": 0.12},
+        {"code": "LR.3", "name": "Flaw in the Reasoning", "weight": 0.13},
+        {"code": "LR.4", "name": "Parallel Reasoning", "weight": 0.13}
+      ]
+    },
+    {
+      "code": "AR",
+      "name": "Analytical Reasoning (Logic Games)",
+      "weight": 0.25,
+      "concepts": [
+        {"code": "AR.1", "name": "Sequencing / Ordering", "weight": 0.09},
+        {"code": "AR.2", "name": "Grouping (In / Out)", "weight": 0.08},
+        {"code": "AR.3", "name": "Matching / Assignment", "weight": 0.08}
+      ]
+    },
+    {
+      "code": "RC",
+      "name": "Reading Comprehension",
+      "weight": 0.25,
+      "concepts": [
+        {"code": "RC.1", "name": "Main Point / Primary Purpose", "weight": 0.09},
+        {"code": "RC.2", "name": "Inference / Implication", "weight": 0.08},
+        {"code": "RC.3", "name": "Author's Attitude / Tone", "weight": 0.08}
+      ]
+    }
+  ]
+}
