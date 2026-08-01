@@ -1,0 +1,5 @@
+{
+  "novel_gate_threshold": 0.7,
+  "mastery_R_threshold": 0.9,
+  "abstain_min_attempts": 8
+}
