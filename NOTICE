@@ -1,0 +1,43 @@
+SuperBuilders — Novel-item Gate
+Copyright (C) 2026 the SuperBuilders authors
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version. See the LICENSE file for the full text.
+
+============================================================================
+Attribution to Anki
+============================================================================
+
+This project is a derivative work of Anki and modifies Anki's Rust engine
+(rslib). Anki is:
+
+    Anki
+    Copyright (C) Ankitects Pty Ltd and contributors
+    https://github.com/ankitects/anki
+    Licensed under the GNU Affero General Public License, version 3 or later,
+    with portions contributed by Anki users licensed under the BSD-3-Clause
+    license (see the CONTRIBUTORS file in the Anki source tree).
+
+Because this project links to and modifies AGPL-licensed Anki code, the whole
+of this project is distributed under the AGPL-3.0-or-later, in compliance with
+that license. Nothing here relicenses Anki or its contributors' work.
+
+The Anki source used as the fork base is version 26.05 (github.com/ankitects/anki).
+The specific Rust engine change and its rationale are documented in
+docs/RUST_RATIONALE.md; the change itself is captured as a patch under
+rust-fork/ against a clean Anki checkout.
+
+============================================================================
+Third-party components
+============================================================================
+
+- Anki bundles and depends on components under their own licenses (BSD-3-Clause,
+  MIT, Apache-2.0, etc.); see the Anki source tree's LICENSE and CONTRIBUTORS.
+- FSRS (Free Spaced Repetition Scheduler) is used by Anki and referenced by this
+  project's mastery model; it is developed by the open-spaced-repetition project.
+
+If you distribute this software or a service built on it, the AGPL requires you
+to offer recipients (including users interacting with it over a network) the
+corresponding source code, including your modifications.
