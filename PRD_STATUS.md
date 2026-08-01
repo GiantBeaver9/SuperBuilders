@@ -94,9 +94,9 @@ box can't build/run native mobile GUIs or record the Anki Qt app)
 | AGPL v3+ license | ✅ | `LICENSE` (full AGPL-3.0 text) |
 | Attribution to Anki (+ BSD components) | ✅ | `NOTICE` |
 | Clean build on a fresh machine | 🟡 | `scripts/bundle_addon.py` + `docs/INSTALL.md`; add fresh-machine doc |
-| Traceability table (feature/POV → code → measurable result) | 🟡 | `PREREGISTRATION.md` §7; expand in `docs/TRACEABILITY.md` |
+| Traceability table (feature/POV → code → measurable result) | ✅ | `docs/TRACEABILITY.md` (every requirement → file → test) |
 | Source code | 🟡 | this repo (growing) |
-| Demo video | ⬜🌐 | `docs/DEMO_SCRIPT.md` + rendered dashboard assets; Qt screen-recording needs the user's machine |
+| Demo video | 🌐 | `docs/DEMO_SCRIPT.md` (shot list) + `sim/dashboard_preview.png`; Qt screen-recording needs the user's machine |
 
 ## Loop order
 
