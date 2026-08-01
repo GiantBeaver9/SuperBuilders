@@ -78,11 +78,17 @@ analysis SQL by a test. See **[`docs/ENGINE.md`](docs/ENGINE.md)**.
 
 | Path | What's there |
 |---|---|
+| `rust-fork/` | **Real Anki Rust engine change** — the `ComputeReadinessGap` scheduler RPC (patch against Anki 26.05) + 4 Rust unit tests + a Python integration test that calls it across the protobuf bridge. See [`docs/RUST_RATIONALE.md`](docs/RUST_RATIONALE.md). |
 | `gap/` | Engine: `db`, `mastery`, `index`, `arms`, `queue`, `retirement`, `novel`, `stats`, `service` |
 | `addon/` | Anki add-on: `__init__`, `ui/{hooks,menu,novel_dialog,dashboard}`, `ui/web/` dashboard, `manifest`/`config` |
-| `schema/` | `gap.sql` (the sidecar) + `main_stub.sql` (validation stand-in) |
-| `queries/` | 10 SQL files, one per lifecycle group (open · assign · queue · endpoints · discipline) |
+| `schema/`, `queries/` | `gap.sql` sidecar + `main_stub.sql`; 10 SQL files (open · assign · queue · endpoints · discipline) |
+| `scoring/`, `eval/` | Three DOK scores (memory/performance/readiness) + confidence; Brier/log-loss **calibration**, **paraphrase** transfer test, leakage check |
+| `ai/` | AI card generation (traceable to sources, AI-disabled fallback) + evals beating keyword/vector baselines |
+| `coverage/`, `data/` | Coverage map per exam topic, tied to an outline |
+| `sync/`, `proto/` | Two-way offline **sync reconciliation** (0-lost/0-dup) + protobuf contract |
+| `bench/` | 50k-card benchmarks + 20× crash-resilience test |
 | `sim/` | `simulate.py` → the crossover + `dashboard_data.json` |
-| `scripts/` | `bundle_addon.py`, `validate_sql.py`, `e2e_seed_test.py` |
-| `tests/` | Engine tests against real Anki + dashboard render check |
-| `docs/` | `ENGINE.md`, `INSTALL.md` |
+| `scripts/`, `tests/`, `docs/` | bundler/validators/starter-deck; tests against real Anki; `ENGINE.md`, `INSTALL.md`, `MOBILE_ARCHITECTURE.md` |
+
+**Full requirement-by-requirement status** (with honest environment limits) is in
+**[`PRD_STATUS.md`](PRD_STATUS.md)**.
