@@ -5,3 +5,4 @@ addon/ui/web/dashboard_data.json
 # build output
 dist/
 *.ankiaddon
+build/
