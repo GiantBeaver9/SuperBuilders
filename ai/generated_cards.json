@@ -1,0 +1,147 @@
+{
+  "_note": "Model-authored AI-mode card set for PRD-4 evals. Authored by a capable model (Claude) from the named sources in ai/sources/; reproducible via the guarded LLM path in ai/generate.py (mode='ai'). Each card cites its source_id and a [start,end) character span into that source's .txt. Labeled honestly as model-authored, not the output of a live call in this box.",
+  "data_cutoff": "2026-08-01",
+  "model": "claude-opus-4-8",
+  "cards": [
+    {
+      "source_id": "euclid_point",
+      "source_span": [
+        0,
+        34
+      ],
+      "front": "In geometry, what is a point?",
+      "back": "That which has no part; it has no size or dimension.",
+      "concept_code": "GEO.1"
+    },
+    {
+      "source_id": "euclid_point",
+      "source_span": [
+        69,
+        138
+      ],
+      "front": "What defines a straight line?",
+      "back": "A line that lies evenly with the points on itself.",
+      "concept_code": "GEO.1"
+    },
+    {
+      "source_id": "euclid_point",
+      "source_span": [
+        192,
+        295
+      ],
+      "front": "How is a right angle formed?",
+      "back": "When a straight line meets another and makes the adjacent angles equal.",
+      "concept_code": "GEO.1"
+    },
+    {
+      "source_id": "newton_motion",
+      "source_span": [
+        0,
+        79
+      ],
+      "front": "What is inertia?",
+      "back": "An object's tendency to resist a change in its state of motion.",
+      "concept_code": "PHY.1"
+    },
+    {
+      "source_id": "newton_motion",
+      "source_span": [
+        254,
+        323
+      ],
+      "front": "What relationship does Newton's second law give?",
+      "back": "Force equals mass times acceleration (F = ma).",
+      "concept_code": "PHY.1"
+    },
+    {
+      "source_id": "newton_motion",
+      "source_span": [
+        324,
+        385
+      ],
+      "front": "How is momentum defined?",
+      "back": "The product of an object's mass and its velocity.",
+      "concept_code": "PHY.1"
+    },
+    {
+      "source_id": "photosynthesis",
+      "source_span": [
+        0,
+        94
+      ],
+      "front": "What does photosynthesis accomplish?",
+      "back": "Green plants convert light energy into chemical energy.",
+      "concept_code": "BIO.1"
+    },
+    {
+      "source_id": "photosynthesis",
+      "source_span": [
+        95,
+        166
+      ],
+      "front": "Which pigment absorbs light for photosynthesis?",
+      "back": "Chlorophyll, the green pigment.",
+      "concept_code": "BIO.1"
+    },
+    {
+      "source_id": "photosynthesis",
+      "source_span": [
+        167,
+        234
+      ],
+      "front": "In which organelle does photosynthesis take place?",
+      "back": "The chloroplast.",
+      "concept_code": "BIO.1"
+    },
+    {
+      "source_id": "lr_assumption",
+      "source_span": [
+        0,
+        121
+      ],
+      "front": "What is a necessary assumption?",
+      "back": "A premise the argument requires; if it is false, the argument falls apart.",
+      "concept_code": "LR.1"
+    },
+    {
+      "source_id": "lr_assumption",
+      "source_span": [
+        122,
+        230
+      ],
+      "front": "What does a sufficient assumption do?",
+      "back": "Added to the argument, it guarantees the conclusion follows.",
+      "concept_code": "LR.1"
+    },
+    {
+      "source_id": "lr_assumption",
+      "source_span": [
+        316,
+        412
+      ],
+      "front": "What does the negation test check?",
+      "back": "That negating a necessary assumption makes the argument collapse.",
+      "concept_code": "LR.1"
+    },
+    {
+      "source_id": "rc_main_point",
+      "source_span": [
+        0,
+        88
+      ],
+      "front": "What is a passage's main point?",
+      "back": "The central claim the author is trying to establish.",
+      "concept_code": "RC.1"
+    },
+    {
+      "source_id": "rc_main_point",
+      "source_span": [
+        89,
+        168
+      ],
+      "front": "What does a passage's primary purpose describe?",
+      "back": "The author's overall reason for writing it.",
+      "concept_code": "RC.1"
+    }
+  ]
+}
