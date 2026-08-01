@@ -112,12 +112,16 @@ def on_review_answered(col: Any, card_id: int, ease: int, time_ms: int) -> list[
     return retirement.evaluate(gapdb)
 
 
-def dashboard_payload(col: Any) -> dict:
-    """The dashboard's data payload over this collection's sidecar."""
+def dashboard_payload(col: Any, include_endpoints: bool = False) -> dict:
+    """The dashboard's data payload over this collection's sidecar.
+
+    Defaults to the fast live tier (``include_endpoints=False``) so first paint
+    stays sub-second even on large decks; the research-analysis endpoints are
+    loaded on demand (the dashboard's "Analysis" action passes ``True``)."""
     from gap import stats
 
     gapdb = open_for_collection(col)
-    return stats.dashboard_payload(gapdb)
+    return stats.dashboard_payload(gapdb, include_endpoints=include_endpoints)
 
 
 def _today(col: Any) -> int | None:

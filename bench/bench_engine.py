@@ -70,10 +70,14 @@ def run_benchmarks(n_cards: int, m_concepts: int, repetitions: int) -> dict:
     g = build_dataset(n_cards=n_cards, m_concepts=m_concepts)
     build_s = time.perf_counter() - t0
 
+    # dashboard_load/refresh use the LIVE tier (include_endpoints=False) — what
+    # the add-on actually calls for first paint. The research-analysis endpoints
+    # are a separate on-demand op (analysis_full), not on the study hot path.
     ops: dict[str, Callable[[], Any]] = {
         "queue": lambda: queue.points_at_stake(g),
-        "dashboard_load": lambda: stats.dashboard_payload(g),
-        "dashboard_refresh": lambda: stats.dashboard_payload(g),
+        "dashboard_load": lambda: stats.dashboard_payload(g, include_endpoints=False),
+        "dashboard_refresh": lambda: stats.dashboard_payload(g, include_endpoints=False),
+        "analysis_full": lambda: stats.dashboard_payload(g, include_endpoints=True),
         "mastery": lambda: mastery.card_mastery_by_concept(g),
     }
     # One untimed warm-up per op (fills SQLite page cache / OS cache; a cold first
@@ -146,7 +150,7 @@ def format_report(bench: dict) -> str:
 
     lines.append("| op | median (ms) | p95 (ms) | worst (ms) | best (ms) |")
     lines.append("|---|---:|---:|---:|---:|")
-    order = ["queue", "dashboard_load", "dashboard_refresh", "mastery"]
+    order = ["queue", "dashboard_load", "dashboard_refresh", "analysis_full", "mastery"]
     for name in order:
         s = r[name]
         lines.append(f"| `{name}` | {s['median']:.1f} | {s['p95']:.1f} | "

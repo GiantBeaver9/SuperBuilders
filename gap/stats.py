@@ -71,11 +71,21 @@ def _f(v: Any) -> float | None:
 # --------------------------------------------------------------------------- #
 # payload
 # --------------------------------------------------------------------------- #
-def dashboard_payload(gapdb: Any, at_ms: int | None = None) -> dict:
-    """Build the full, JSON-serializable dashboard payload.
+def dashboard_payload(gapdb: Any, at_ms: int | None = None,
+                      include_endpoints: bool = True) -> dict:
+    """Build the JSON-serializable dashboard payload.
 
     See the module docstring for the live-safety contract. ``at_ms`` (epoch ms)
     is the instant retrievability is evaluated at; ``None`` means "now".
+
+    ``include_endpoints`` controls the research-analysis block (crossover,
+    terminal, throughput, latency). Those recompute the exposure-index endpoint
+    joins, which are ~O(reviews×novel) and dominate build time on large decks
+    (~3s at 50k cards). The LIVE add-on passes ``include_endpoints=False`` for a
+    sub-second first paint — the per-concept scores, abstain, arms and coverage
+    are what a study session needs; the endpoints are an analysis artifact shown
+    on demand / by the simulation, not on every dashboard open. The sim and the
+    standalone dashboard pass ``True`` for the full picture on their (small) data.
     """
     generated_ms = mastery.now_ms() if at_ms is None else at_ms
 
@@ -173,13 +183,17 @@ def dashboard_payload(gapdb: Any, at_ms: int | None = None) -> dict:
         if cid in retired:
             arms[arm]["retired"] += 1
 
-    # -- endpoints ----------------------------------------------------------- #
-    endpoints = {
-        "crossover": _crossover(gapdb),
-        "terminal": _terminal(gapdb),
-        "throughput": _throughput(gapdb),
-        "latency": _latency(gapdb),
-    }
+    # -- endpoints (research-analysis block; skipped on the live hot path) ---- #
+    # `None` (not an empty dict) marks "not computed this call", distinct from
+    # "computed and empty"; the dashboard treats null as "open the analysis view".
+    endpoints = None
+    if include_endpoints:
+        endpoints = {
+            "crossover": _crossover(gapdb),
+            "terminal": _terminal(gapdb),
+            "throughput": _throughput(gapdb),
+            "latency": _latency(gapdb),
+        }
 
     return {
         "generated_ms": int(generated_ms),
